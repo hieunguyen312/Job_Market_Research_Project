@@ -20,8 +20,12 @@ This research will help employers, job seekers, and policymakers understand the 
 The data for this project comes from LinkedIn and Indeed job postings. You can download the dataset from the link below:
 
 [Download Dataset](https://www.kaggle.com/datasets/arshkon/linkedin-job-postings/data)
+
 [Download Dataset 2](https://fred.stlouisfed.org/series/IHLIDXUS)
+
 [Download Dataset 3](https://fred.stlouisfed.org/series/IHLIDXUSTPSOFTDEVE)
+
+Other datasets needed can be found as csv files in the repository
 
 ## Getting Started
 
