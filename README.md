@@ -1,42 +1,62 @@
-# Job Market Research Project
+# 📊 Job Market Research Project
 
-This project uses data from job postings on LinkedIn and Indeed for the years 2023-2024 to analyze trends in the job market in the United States. 
-The goal is to gain insights into employment opportunities, job requirements, and other key factors affecting the job market today. 
-By analyzing these job postings, we aim to uncover trends, identify in-demand skills, and explore regional differences.
+A data-driven exploration of the U.S. job market using job postings from LinkedIn and Indeed (2023–2024), enriched with salary normalization, industry classification, and geographic insights.
 
-## Description
+---
 
-In this project, we have collected job posting data from LinkedIn and Indeed for the years 2023-2024. The dataset includes details such as job titles, descriptions, locations, required skills, salaries, and more. We analyze this data to uncover:
-- Job market trends over the past year.
-- In-demand skills and job categories and industries.
-- The state of the job market and specifically how the tech industries compares to oters
-- Regional variations in job availability and salaries.
-- Insights into hiring patterns across industries.
+## 🚧 Work in Progress
 
-This research will help employers, job seekers, and policymakers understand the current state of the job market and make informed decisions.
+🔗 [**View the current interactive HTML report**](https://htmlpreview.github.io/?https://github.com/hieunguyen312/Job_Market_Research_Project/blob/main/Job_Market_Project.html)
 
-## Dataset
+---
 
-The data for this project comes from LinkedIn and Indeed job postings. You can download the dataset from the link below:
+## 📌 Project Overview
 
-[Download Dataset](https://www.kaggle.com/datasets/arshkon/linkedin-job-postings/data)
+This project explores patterns and insights from job posting data across the United States. By analyzing listings from LinkedIn and Indeed, the report aims to help job seekers, employers, and policy makers better understand:
 
-[Download Dataset 2](https://fred.stlouisfed.org/series/IHLIDXUS)
+- 🧠 In-demand skills and industries
+- 🌎 Regional differences in job opportunities and salaries
+- 💰 Normalized salary trends across different currencies and pay periods
+- 🏢 Shifts in hiring trends, especially in the tech sector
+- 🗓️ Temporal patterns in job availability
 
-[Download Dataset 3](https://fred.stlouisfed.org/series/IHLIDXUSTPSOFTDEVE)
+---
 
-**Other datasets needed can be found as xlsx and csv files in the repository**
+## 📁 Key Features
 
-## Getting Started
+- Cleaned and processed thousands of job listings using R
+- Handled duplicate and inconsistent entries with care
+- Normalized salary data to annual USD equivalent
+- Converted and visualized time data from UNIX timestamps
+- Mapped job counts geographically across U.S. states
+- Analyzed job industries using natural language processing (NLP)
+- Connected education trends with job market demands
 
-To run this project locally, you will need to clone the repository and install the necessary dependencies.
+---
 
-### Prerequisites
+## 📊 Technologies Used
 
-- R, Rstudio (Newest Version)
-- Packages: c("tidyverse", "readr", "scales", "tidytext", "maps", "ggthemes", "readxl")
+- **R** (Data wrangling and visualization)
+- **RMarkdown** (Report generation)
+- **Libraries**:  
+  `tidyverse`, `readr`, `scales`, `tidytext`, `maps`, `ggthemes`, `readxl`
 
-# Work in Progress
-## [You can view the current html file under the link:](https://htmlpreview.github.io/?https://github.com/hieunguyen312/Job_Market_Research_Project/blob/main/Job_Market_Project.html)
+---
 
+## 📚 Datasets
 
+- [📂 LinkedIn Job Postings (Kaggle)](https://www.kaggle.com/datasets/arshkon/linkedin-job-postings/data)  
+- [📈 U.S. Job Openings Index (FRED)](https://fred.stlouisfed.org/series/IHLIDXUS)  
+- [💻 U.S. Tech Job Openings Index (FRED)](https://fred.stlouisfed.org/series/IHLIDXUSTPSOFTDEVE)  
+- 📎 Additional `.csv` and `.xlsx` files included in the repository
+
+---
+
+## 🚀 How to Run This Project
+
+### 🔧 Prerequisites
+
+- R and RStudio (latest version recommended)
+- R Packages:
+  ```r
+  install.packages(c("tidyverse", "readr", "scales", "tidytext", "maps", "ggthemes", "readxl"))
