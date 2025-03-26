@@ -25,7 +25,7 @@ The data for this project comes from LinkedIn and Indeed job postings. You can d
 
 [Download Dataset 3](https://fred.stlouisfed.org/series/IHLIDXUSTPSOFTDEVE)
 
-**Other datasets needed can be found as csv files in the repository**
+**Other datasets needed can be found as xlsx and csv files in the repository**
 
 ## Getting Started
 
