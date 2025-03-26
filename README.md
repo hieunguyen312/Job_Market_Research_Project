@@ -33,3 +33,6 @@ To run this project locally, you will need to clone the repository and install t
 - Packages: c("tidyverse", "readr", "scales", "tidytext", "maps", "ggthemes", "readxl")
 
 # Work in Progress
+## [You can view the current html file under the link:](https://htmlpreview.github.io/?https://github.com/hieunguyen312/Job_Market_Research_Project/blob/main/Job_Market_Project.html)
+
+
