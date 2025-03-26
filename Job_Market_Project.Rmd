@@ -1,0 +1,847 @@
+---
+title: "Is The Job Market 'Cooked' ?"
+author: "Hieu Nguyen"
+date: "2025-03-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# Using read instead of fread because fread have some troubles with handling NA values
+library(readr)
+posting <- read_csv("postings.csv")
+#View(posting)
+```
+
+```{r}
+library(tidyverse)
+library(scales)
+```
+
+### Changes:
+Include original_list_time, expiry and closed_time. All time are in UNIX time in millisecond
+
+```{r}
+posting_clean <- posting %>% 
+  select(job_id, company_name, title, max_salary, med_salary, min_salary, pay_period, location, company_id, formatted_work_type,original_listed_time, expiry, closed_time, applies, remote_allowed, application_type, formatted_experience_level, sponsored, work_type, currency, zip_code, fips)
+```
+
+# Step 1
+First, we will see if there are any completely duplicated rows, to see if there are any duplicates in the data retrieval processes. 
+Note that we will also include job_id when checking for completely duplicated rows, because if the same job has two different ids, that job is posted twice, In this case, we will check how often the same jobs are posted more than once, and we will decide what to do with it accordingly
+
+```{r}
+#View(posting_clean)
+```
+
+```{r}
+duplicated_posting_clean <- posting_clean[duplicated(posting_clean) | duplicated(posting_clean, fromLast = TRUE), ]
+duplicated_posting_clean
+```
+
+```{r}
+posting_clean_no_id <- posting_clean %>% 
+  select(-job_id, -company_id, -original_listed_time, -expiry, -closed_time)
+```
+
+```{r}
+#View(posting_clean_no_id)
+```
+
+```{r}
+duplicated_posting_clean_no_id <- posting_clean_no_id[duplicated(posting_clean_no_id) | duplicated(posting_clean_no_id, fromLast = TRUE), ]
+duplicated_posting_clean_no_id
+```
+
+Since with job_id included, there were no duplicates, and upon inspection of the duplicated rows without the id columns, it is safe to assume that all these duplicated rows without ids are separate job posting, or are the result of companies posting more than once for the same positions, or are changes to the job posting and that they post another job after making those changes to the posting. Due to these facts, we will be keeping all of the duplicated rows without ids, since they are not really duplicates. Now, we will go on to inspect the data closer.
+
+```{r}
+summary(posting_clean)
+```
+
+```{r}
+str(posting_clean)
+```
+
+Formatting to universal currency: USD
+Since we will need to format other columns such as max, med, min salary, pay period, we need to tackle the currency column first
+We know that there are multiple currency. First, we will factor `currency` to find out how many levels it has, and its distribution
+Since this is the data set of LinkedIn job posting in the United States, we can safely assume that if the currency is not specified, it is USD.
+To support this theory, we can plot the distribution of other currencies, and we can observe that NA and USD is the default.
+We will created a subset data where the currency is neither USD or NA to see how many observation of other currency we have
+
+```{r}
+posting_clean$currency <- factor(posting_clean$currency)
+levels(posting_clean$currency)
+```
+
+Factoring currency
+
+```{r}
+# Using a log scale for y to visualize other currency
+ggplot(posting_clean, aes(x = currency, y = ..count..)) +
+  geom_bar() +
+  scale_y_log10(labels = scales::comma)
+```
+
+```{r}
+# Filtering the data for odd currency
+posting_clean_odd_currency <- posting_clean %>% 
+  filter(!is.na(posting_clean$currency)) %>% 
+  filter(!currency == "USD")
+```
+
+```{r}
+# Making a bar chart of the distribution of odd currency
+ggplot(posting_clean_odd_currency, aes(x = currency, y = ..count..)) +
+  geom_bar()
+```
+
+Since there are only a handful of odd currency, we can safely assume that these are outliers, so the default currency is USD. Now, we will repopulate the currency columns for USD value in place of NA's.
+
+```{r}
+# Converting into string text again before repopulate
+posting_clean$currency <- as.character(posting_clean$currency)
+
+# Repopulating the currency column
+posting_clean <- posting_clean %>% 
+  mutate(currency = ifelse(is.na(currency), "USD", currency))
+```
+
+```{r}
+# Factoring the currencies again 
+posting_clean$currency <- factor(posting_clean$currency)
+```
+
+```{r}
+# Using a log scale for y to visualize other currency
+ggplot(posting_clean, aes(x = currency, y = ..count..)) +
+  geom_bar() +
+  scale_y_log10(labels = scales::comma)
+```
+
+# Step 2:
+
+Now, we will normalized other columns that is affected by currency like salary and pay rate.
+First, we have to figure out how many types of pay there are
+
+```{r}
+ggplot(posting_clean, aes(x = pay_period, y = ..count..)) +
+  geom_bar() +
+  scale_y_log10(labels = scales::comma) 
+```
+
+Since NA pay takes quite a large proportion, we can assume that jobs that don't have a specified pay period don't include min/med/max salaries. 
+We check this 
+
+```{r}
+posting_clean_pay_null <- posting_clean %>% 
+  filter(is.na(pay_period))
+posting_clean_pay_null
+```
+
+
+```{r}
+posting_clean_pay_null %>% filter(!is.na(max_salary) | !is.na(min_salary) | !is.na(med_salary))
+```
+There are no instances where expected salaries (max/med/min salary) is mentioned without the pay period, so we can rest assure
+Now, we need to convert expected salary to a normalized format. In this case, we will choose annually as the normalised format, since it is the easiest to visualize how much they are making a year, and it is much easier to convert from annually to any other format.
+
+```{r}
+posting_clean <- posting_clean %>% 
+  mutate(norm_max_salary = case_when(
+    is.na(pay_period) ~ NA_real_,
+    pay_period == "HOURLY" ~ max_salary * 40 * 52,
+    pay_period == "WEEKLY" ~ max_salary * 52,
+    pay_period == "BIWEEKLY" ~ max_salary * 26,
+    pay_period == "MONTHLY" ~ max_salary * 12,
+    pay_period == "YEARLY" ~ max_salary,
+    TRUE ~ NA_real_
+  ))
+```
+
+```{r}
+posting_clean <- posting_clean %>% 
+  mutate(norm_med_salary = case_when(
+    is.na(pay_period) ~ NA_real_,
+    pay_period == "HOURLY" ~ med_salary * 40 * 52,
+    pay_period == "WEEKLY" ~ med_salary * 52,
+    pay_period == "BIWEEKLY" ~ med_salary * 26,
+    pay_period == "MONTHLY" ~ med_salary * 12,
+    pay_period == "YEARLY" ~ med_salary,
+    TRUE ~ NA_real_
+  ))
+
+posting_clean <- posting_clean %>% 
+  mutate(norm_min_salary = case_when(
+    is.na(pay_period) ~ NA_real_,
+    pay_period == "HOURLY" ~ min_salary * 40 * 52,
+    pay_period == "WEEKLY" ~ min_salary * 52,
+    pay_period == "BIWEEKLY" ~ min_salary * 26,
+    pay_period == "MONTHLY" ~ min_salary * 12,
+    pay_period == "YEARLY" ~ min_salary,
+    TRUE ~ NA_real_
+  ))
+```
+
+Populating the norm_med_salary column based on max and min salary if NA
+
+```{r}
+posting_clean <- posting_clean %>% 
+  mutate(norm_med_salary = ifelse(is.na(norm_med_salary), (norm_max_salary + norm_min_salary) / 2, norm_med_salary))
+```
+
+Converting currency
+
+```{r}
+posting_clean <- posting_clean %>% 
+  mutate(norm_med_salary = case_when(
+    is.na(norm_med_salary) ~ NA_real_,
+    currency == "AUD" ~ norm_med_salary * 0.6184,
+    currency == "BBD" ~ norm_med_salary * 0.5,
+    currency == "CAD" ~ norm_med_salary * 0.682,
+    currency == "EUR" ~ norm_med_salary * 1.1,
+    currency == "GBP" ~ norm_med_salary * 1.3, 
+    currency == "USD" ~ norm_med_salary,
+    TRUE ~ NA_real_
+  ))
+
+posting_clean <- posting_clean %>% 
+  mutate(norm_max_salary = case_when(
+    is.na(norm_max_salary) ~ NA_real_,
+    currency == "AUD" ~ norm_max_salary * 0.6184,
+    currency == "BBD" ~ norm_max_salary * 0.5,
+    currency == "CAD" ~ norm_max_salary * 0.682,
+    currency == "EUR" ~ norm_max_salary * 1.1,
+    currency == "GBP" ~ norm_max_salary * 1.3, 
+    currency == "USD" ~ norm_max_salary,
+    TRUE ~ NA_real_
+  ))
+
+posting_clean <- posting_clean %>% 
+  mutate(norm_min_salary = case_when(
+    is.na(norm_min_salary) ~ NA_real_,
+    currency == "AUD" ~ norm_min_salary * 0.6184,
+    currency == "BBD" ~ norm_min_salary * 0.5,
+    currency == "CAD" ~ norm_min_salary * 0.682,
+    currency == "EUR" ~ norm_min_salary * 1.1,
+    currency == "GBP" ~ norm_min_salary * 1.3, 
+    currency == "USD" ~ norm_min_salary,
+    TRUE ~ NA_real_
+  ))
+```
+
+
+Converting original_listed_time, expiry, closed_time to date
+
+```{r}
+posting_clean$original_listed_time <- as.POSIXct(posting_clean$original_listed_time / 1000, origin = "1970-01-01", tz = "UTC")
+```
+
+```{r}
+posting_clean$expiry <- as.POSIXct(posting_clean$expiry / 1000, origin = "1970-01-01", tz = "UTC")
+posting_clean$closed_time <- as.POSIXct(posting_clean$closed_time / 1000, origin = "1970-01-01", tz = "UTC")
+```
+
+Inspect amount of null values per col
+```{r}
+colSums(is.na(posting_clean))
+```
+
+Percentage of null value per col
+```{r}
+round(colSums(is.na(posting_clean)) / nrow(posting_clean) * 100, 2)
+```
+
+We will drop all the locations where both zips and fips is null, we will then later repopulate the location column based on zip code or fips code
+
+```{r}
+posting_clean <- posting_clean %>%  
+  mutate(location = ifelse(is.na(zip_code) & is.na(fips), NA, location))
+```
+
+Separate location into city and state
+
+```{r}
+posting_clean <- posting_clean %>% 
+  separate(location, into = c("city", "state"), sep = ",")
+```
+
+Drop old max/med/min salary cols, currency col
+
+```{r}
+posting_clean <- posting_clean %>% 
+  select(-max_salary, -min_salary, -med_salary, -currency)
+```
+
+Relocate cols for easier cleaning
+
+```{r}
+posting_clean <- posting_clean %>% 
+  relocate(norm_max_salary, norm_med_salary, norm_min_salary, .before = pay_period)
+```
+
+```{r}
+posting_clean <- posting_clean %>% 
+  relocate(zip_code, fips, .after = state)
+```
+
+### Repopulating city and state based on zip_code and fips
+
+Loading in the zip_code_database
+
+```{r}
+zip_code_database <- read_csv("zip_code_database.csv")
+```
+
+```{r}
+zip_code_database_clean <- zip_code_database %>% 
+  select(zip, primary_city, state, latitude, longitude)
+```
+
+Adding a suffix to zip_code_database_clean
+
+```{r}
+zip_code_database_clean <- zip_code_database_clean %>% 
+  rename_with(~ paste0(.x, ".zipcode"))
+```
+
+
+Left joining posting_clean with zip_code_database_clean
+
+```{r}
+posting_clean <- posting_clean %>% 
+  left_join(zip_code_database_clean, by = c("zip_code" = "zip.zipcode"))
+```
+
+Populating city and state using zip_code
+First, we need to find out how much observation where city or state is null while zip_code or fips is not
+
+```{r}
+posting_clean_city_or_state_null <- posting_clean %>% 
+  filter(is.na(city) | is.na(state))
+nrow(posting_clean_city_or_state_null)
+```
+
+```{r}
+posting_zip_and_fips_not_null <- posting_clean_city_or_state_null %>%  
+  filter(!is.na(zip_code) & !is.na(fips))
+nrow(posting_zip_and_fips_not_null)
+```
+
+There is no way to populate those columns, all instances where city or state is null is due to zip_code & fips being null
+We can removes the columns that we don't need
+
+```{r}
+posting_clean <- posting_clean %>% 
+  select(-primary_city.zipcode, -state.zipcode, -latitude.zipcode, -longitude.zipcode)
+```
+
+Let see the distribution of states:
+
+```{r, fig.height=8}
+posting_clean %>% 
+  filter(!is.na(state)) %>% 
+  ggplot(aes(x = reorder(factor(state), desc(factor(state))))) +
+  geom_bar(width = 0.8) +  
+  coord_flip() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 11)) +
+  labs(x = "State", y = "Count")
+```
+
+We can confirm that there is no outliers in the state columns, and the format of state is correct
+
+Reading the industries and job_industries tables into posting
+
+```{r}
+industry <- read_csv("industries.csv")
+job_industry <- read_csv("job_industries.csv")
+```
+
+```{r}
+#posting_clean <- posting_clean %>% 
+#  left_join(job_industry, by = "job_id")
+```
+
+Left joining will create duplicates on the posting_clean because 1 job_id can have more than 1 industry_id, so we will aggregate the job_industry by job_id
+So first, we will have to join job_industry with industry on industry_id, doing this will create a job_industry table with job_id, industry_id, and industry_name. 
+After that, we can aggregate the industry_name grouped by job_id, this means a job can have multiple industries, and our posting_clean table will not create any duplicated posting.
+
+```{r}
+job_industry <- job_industry %>% 
+  left_join(industry, by = "industry_id")
+```
+
+
+```{r}
+job_industry_agg <- job_industry %>% 
+  group_by(job_id) %>% 
+  summarise(industries_name = paste(industry_name, collapse = ", "))
+```
+
+Now, we can left join posting_clean with job_industry_agg and we won't have any duplicated rows of job postings, while keeping all the industries_name for further analysis
+
+```{r}
+posting_clean <- posting_clean %>% 
+  left_join(job_industry_agg, by = "job_id") %>% 
+  relocate(industries_name, .after = title)
+```
+
+Now, we want categorize the industries_name down to smaller groups for further analysis, because as of right now, there are over 3,300+ unique industries.
+
+Attempt 1:
+Methods: We will try to find out which are the most common keywords of each industries, and the we can use that to try to categorize all the industries based on common keywords
+Search for top 50 keywords
+
+Attempt 2:
+Expand the searching parameters to 100 most common instead
+
+Attempt 3:
+Increase the size to 200
+```{r}
+library(tidytext)
+top50_keywords <- posting_clean %>% 
+  unnest_tokens(word, industries_name) %>% 
+  anti_join(stop_words, by = "word") %>% # Remove common stop words
+  count(word, sort = TRUE) %>% 
+  top_n(50, n)
+#View(top50_keywords)
+
+top100_keywords <- posting_clean %>% 
+  unnest_tokens(word, industries_name) %>% 
+  anti_join(stop_words, by = "word") %>% # Remove common stop words
+  count(word, sort = TRUE) %>% 
+  top_n(100, n)
+#View(top100_keywords)
+```
+
+
+```{r}
+top200_keywords <- posting_clean %>% 
+  unnest_tokens(word, industries_name) %>% 
+  anti_join(stop_words, by = "word") %>% # Remove common stop words
+  count(word, sort = TRUE) %>% 
+  top_n(200, n)
+#View(top200_keywords)
+```
+
+```{r}
+#temporary_test <- top200_keywords %>% 
+#  select(word)
+```
+
+```{r}
+#temporary_test2 <- read_csv("industry_keywords_by_field.csv")
+```
+
+```{r}
+#temporary_test3 <- temporary_test %>% 
+#  semi_join(temporary_test2, by = c("word" = "Keyword"))
+```
+
+```{r}
+#tempurary_test4 <- temporary_test3 %>%  
+#  inner_join(temporary_test2, by = c("word" = "Keyword"))
+```
+
+
+Mapping out individual keywords
+
+```{r}
+posting_clean[grepl("Defense and space", posting_clean$industries_name, ignore.case = TRUE), ]
+```
+
+```{r}
+#posting_clean[grepl("advertising", posting_clean$industries_name, ignore.case = TRUE), ]
+```
+
+```{r}
+#top200_keywords_test2 <- top200_keywords %>% 
+#  left_join(tempurary_test4, by = "word")
+```
+
+Now, I want to see what the leading industries are, lets convert the current table into long format and aggregate by industries_name
+
+```{r}
+posting_clean_long <- posting_clean %>% 
+  separate_rows(industries_name, sep = ",") %>% 
+  mutate(industries_name = str_trim(industries_name))
+```
+
+Grouping by industries_name
+
+```{r}
+posting_clean_long_agg <- posting_clean_long %>% 
+  count(industries_name, sort = TRUE)
+```
+
+```{r}
+nrow(posting_clean_long_agg)
+```
+
+Since there are about only 400 industries, we don't have to group them down to bigger sectors
+Instead, let's see the distribution of these industries
+
+```{r}
+ggplot(posting_clean_long_agg, aes(x = n)) +
+  geom_histogram() + 
+  scale_x_log10(labels = scales::comma) +
+  labs(x = "Distribution of amount of jobs per industries")
+```
+
+Top50 industries
+
+```{r, fig.height=12}
+posting_clean_long_agg %>% 
+  filter(!is.na(industries_name)) %>% 
+  slice_max(n, n = 100) %>% 
+  ggplot(aes(x = reorder(industries_name, n), y = n)) + 
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme(axis.text.x = element_text(size = 5))
+```
+
+Let see job demand from 2023-2024
+First, lets create a month-year column for data aggregation
+
+### Testing
+
+No time series available, because we are missing a lot of data
+
+```{r}
+posting_clean_long_yearmonth <- posting_clean_long %>% 
+  mutate(yearmonth = as.Date(format(original_listed_time, "%Y-%m-01"))) %>% 
+  relocate(yearmonth, .after = original_listed_time)
+```
+
+```{r}
+posting_clean_long %>% 
+  count(industries_name, sort = TRUE) %>% 
+  slice_max(n, n = 100) %>% 
+  pull(industries_name)
+```
+
+```{r}
+#posting_clean_long_top_3 <- posting_clean_long_yearmonth %>% 
+#  filter(industries_name %in% top3_industries) %>% 
+#  count(yearmonth, industries_name) 
+```
+
+```{r}
+#ggplot(posting_clean_long_top_3, aes(x = yearmonth, y = n, color = industries_name)) +
+#  geom_line() +
+#  scale_y_log10()
+```
+
+Total jobs posed on linkedIn
+
+```{r}
+posting_clean_long_yearmonth_total <- posting_clean_long_yearmonth %>% 
+  count(yearmonth)
+```
+
+Distribution of job posting my month
+
+```{r, warning=FALSE}
+ggplot(posting_clean_long_yearmonth, aes(x = yearmonth, y = after_stat(count))) +
+  geom_bar() +
+  scale_y_log10(labels = scales::comma)
+```
+
+For our data set, most job posting happends in March - April, we will use this knowledge to construct a choropleth map based on all of the job posted during these periods
+
+```{r}
+library(maps)
+library(ggthemes)
+
+#posting_clean_long$state <- trimws(posting_clean_long$state)
+#head(match(posting_clean_long$state, state.abb))
+
+#posting_clean_long$state_full <- tolower(state.name[match(posting_clean_long$state, state.abb)])
+
+posting_clean$state <- trimws(posting_clean$state)
+head(match(posting_clean$state, state.abb))
+
+posting_clean$state_full <- tolower(state.name[match(posting_clean$state, state.abb)])
+
+us_map_data <- map_data("state")
+
+state_posting <- posting_clean %>% 
+  count(state_full) %>% 
+  filter(!is.na(state_full))
+
+#sum(state_posting$n)
+
+state_posting_map_joined <- left_join(us_map_data, state_posting, by = c("region" = "state_full"))
+```
+
+
+```{r}
+ggplot(state_posting_map_joined, aes(x = long, y = lat, group = group, fill = n)) +
+  geom_polygon(color = "white") +
+  coord_fixed(1.3) +
+  theme_map() +
+  scale_fill_gradient2(
+    low = "red",
+    mid = "grey",
+    high = "forestgreen",
+    midpoint = median(state_posting_map_joined$n, na.rm = TRUE)
+  )
+```
+
+
+Let see the distribution of the amount ob jobs acros state first
+
+```{r, fig.height=8}
+ggplot(state_posting, aes(x = state_full, y = n)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_y_log10()
+```
+
+```{r, fig.height=8}
+ggplot(state_posting, aes(x = state_full, y = n)) +
+  geom_bar(stat = "identity") +
+  coord_flip() 
+```
+
+```{r}
+summary(state_posting$n)
+```
+
+Let's try another map with the log10() used
+
+```{r}
+state_posting_logn <- state_posting %>% 
+  mutate(logn = log10(n))
+```
+
+```{r}
+state_posting_logn_map_joined <- left_join(us_map_data, state_posting_logn, by = c("region" = "state_full"))
+```
+
+```{r}
+ggplot(state_posting_logn_map_joined, aes(x = long, y = lat, group = group, fill = logn)) +
+  geom_polygon(color = "white") +
+  coord_fixed(1.3) +
+  theme_map() +
+  scale_fill_gradient2(
+    low = "firebrick",
+    mid = "grey90",
+    high = "darkgreen",
+    midpoint = mean(state_posting_logn_map_joined$logn, na.rm = TRUE)
+  ) +
+  theme(legend.position = "none")
+```
+
+Let see distribution of jobs in the tech industries
+Because a job can be in multiple industries, and we are using the long format data, I will be dropping any duplicated job posting on job_id, because they most likely are in the same industries anyway
+
+```{r}
+tech_industries <- c("IT Services and IT Consulting", "Software Development", "Technology", "Information and Internet", "Information and Media", 
+                     "Information Services", "Computer and Network Security", "Information Technology & Services")
+```
+
+```{r}
+posting_clean_long %>% 
+  count(industries_name, sort = TRUE) %>% 
+  slice_max(n, n = 100) %>% 
+  pull(industries_name)
+```
+
+```{r}
+posting_clean[grepl("Technology", posting_clean$industries_name, ignore.case = TRUE), ]
+```
+
+Filtering for job positing within the tech industries
+
+```{r}
+posting_clean_long_tech <- posting_clean_long %>% 
+  filter(industries_name %in% tech_industries)
+
+sum(duplicated(posting_clean_long_tech$job_id))
+
+posting_clean_long_tech_unique_id <- posting_clean_long_tech %>% 
+  filter(!duplicated(job_id))
+
+sum(duplicated(posting_clean_long_tech_unique_id$job_id))
+```
+
+Cleaning the new dataset
+
+```{r}
+posting_clean_long_tech_unique_id$state <- trimws(posting_clean_long_tech_unique_id$state)
+
+posting_clean_long_tech_unique_id$state_full <- tolower(state.name[match(posting_clean_long_tech_unique_id$state, state.abb)])
+
+posting_clean_agg_tech_unique_id <- posting_clean_long_tech_unique_id %>% 
+  count(state_full) %>% 
+  filter(!is.na(state_full))
+
+state_tech_posting_map_joined <- left_join(us_map_data, posting_clean_agg_tech_unique_id, by = c("region" = "state_full"))
+state_tech_posting_map_joined$logn <- log10(state_tech_posting_map_joined$n)
+```
+
+
+```{r}
+ggplot(state_tech_posting_map_joined, aes(x = long, y = lat, group = group, fill = logn)) +
+  geom_polygon(color = "white") +
+  coord_fixed(1.3) +
+  theme_map() +
+  scale_fill_gradient2(
+    low = "firebrick",
+    mid = "grey90",
+    high = "darkgreen",
+    midpoint = mean(state_tech_posting_map_joined$logn, na.rm = TRUE)
+  ) +
+  theme(legend.position = "none")
+```
+
+```{r}
+ggplot(state_tech_posting_map_joined, aes(x = long, y = lat, group = group, fill = logn)) +
+  geom_polygon(color = "white") +
+  coord_fixed(1.3) +
+  theme_map() +
+  scale_fill_gradient(
+    low = "grey",
+    high = "darkgreen"
+  ) +
+  theme(legend.position = "none")
+```
+
+```{r}
+ggplot(state_tech_posting_map_joined, aes(x = long, y = lat, group = group, fill = logn)) +
+  geom_polygon(color = "white") +
+  coord_fixed(1.3) +
+  theme_map() +
+  scale_fill_gradient2(
+    low = "grey",
+    mid = "#97B197",
+    high = "darkgreen",
+    midpoint = mean(state_tech_posting_map_joined$logn, na.rm = TRUE)
+  ) +
+  theme(legend.position = "none")
+```
+
+Let's load the data for graduates in the United States
+
+```{r}
+library(readxl)
+degree_dataset <- read_excel("degree_dataset.xlsx")
+#View(degree_dataset)
+```
+
+Convert it to long format
+
+```{r}
+degree_long <- degree_dataset %>% 
+  pivot_longer(
+    cols = 2:ncol(degree_dataset),
+    names_to = "graduate_year",
+    values_to = "total_graduate"
+  )
+```
+
+
+```{r}
+ggplot(degree_long, aes(x = factor(graduate_year), y = total_graduate, group = `Field of study`)) +
+  geom_line() +
+  theme(axis.text.x = element_text(angle = 30, vjust = 0.6)) 
+```
+
+Top 10 and highlight
+
+```{r}
+degree_long_top10 <- degree_long %>% 
+  group_by(`Field of study`) %>% 
+  summarise(total_per_field = sum(total_graduate)) %>% 
+  arrange(total_per_field) %>% 
+  slice_max(total_per_field, n = 10) %>% 
+  pull(`Field of study`)
+```
+
+
+Because the graduate years are no on a continuous scale, we will have to convert int normal years first
+
+```{r}
+degree_long <- degree_long %>% 
+  mutate(graduate_year = gsub(pattern = "-..$", replacement = "", x = graduate_year)) %>% 
+  mutate(graduate_year = as.numeric(graduate_year) + 1) 
+```
+
+
+
+
+Growing Fields
+
+```{r, fig.height=6, fig.width=10, fig.dpi=600}
+degree_long %>% 
+  filter(`Field of study` %in% degree_long_top10) %>% 
+  mutate(highlight = ifelse(`Field of study` %in% c("Business", "Health professions and related programs", "Engineering", "Biological and biomedical sciences", "Computer and information sciences and support services", "Psychology"), "highlight", "normal"),
+         highlight2 = case_when(
+           `Field of study` == "Business" ~ "Business",
+           `Field of study` == "Health professions and related programs" ~ "Healthcare",
+           `Field of study` == "Engineering" ~ "Engineering",
+           `Field of study` == "Computer and information sciences and support services" ~ "Computer Science",
+           `Field of study` == "Biological and biomedical sciences" ~ "Biomedical Science",
+           `Field of study` == "Psychology" ~ "Psychology",
+           TRUE ~ "Others"
+         )) %>% 
+  ggplot( aes(x = graduate_year, y = total_graduate, group = `Field of study`, color = highlight2, alpha = highlight)) +
+  geom_line(linewidth = 0.8) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 30, vjust = 0.6)) +
+  scale_alpha_manual(values = c("highlight" = 1, "normal" = 0.3)) +
+  labs(x = "Years", color = "Field of Study", title = "Top Growing Degrees") +
+  scale_color_manual(values = c("#16317DFF" ,"#007E2FFF", "#00B7A7FF", "#B86092FF", "#A40000FF","#F39C12", "grey"),
+                     breaks = c("Business", "Healthcare", "Biomedical Science", "Engineering", "Psychology", "Computer Science")) +
+  theme(#legend.position = "none", 
+        axis.title.y.left = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 20)) +
+  guides(alpha = "none")
+```
+
+
+```{r, fig.height=6, fig.width=10}
+degree_long %>% 
+  mutate(highlight = ifelse(`Field of study` %in% c("Business", "Health professions and related programs", "Engineering", "Biological and biomedical sciences", "Computer and information sciences and support services", "Psychology"), "highlight", "normal"),
+         highlight2 = case_when(
+           `Field of study` == "Business" ~ "Business",
+           `Field of study` == "Health professions and related programs" ~ "Healthcare",
+           `Field of study` == "Engineering" ~ "Engineering",
+           `Field of study` == "Computer and information sciences and support services" ~ "Computer Science",
+           `Field of study` == "Biological and biomedical sciences" ~ "Biomedical Science",
+           `Field of study` == "Psychology" ~ "Psychology",
+           TRUE ~ "Others"
+         )) %>% 
+  ggplot( aes(x = graduate_year, y = total_graduate, group = `Field of study`, color = highlight2, alpha = highlight)) +
+  geom_line(linewidth = 0.8) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 30, vjust = 0.6)) +
+  scale_alpha_manual(values = c("highlight" = 1, "normal" = 0.2)) +
+  labs(x = "Years", color = "Field of Study", title = "Top Growing Degrees") +
+  scale_color_manual(values = c("#16317DFF" ,"#007E2FFF", "#00B7A7FF", "#B86092FF", "#A40000FF","#F39C12", "grey"),
+                     breaks = c("Business", "Healthcare", "Biomedical Science", "Engineering", "Psychology", "Computer Science")) +
+  theme(#legend.position = "none", 
+        axis.title.y.left = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 20)) +
+  guides(alpha = "none")
+```
+
+Top decling degree?
+
+
+
+
+
+
+
+
+
+
