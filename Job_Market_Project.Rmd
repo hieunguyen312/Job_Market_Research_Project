@@ -780,7 +780,7 @@ degree_long <- degree_long %>%
 
 Growing Fields
 
-```{r, fig.height=6, fig.width=10, fig.dpi=600}
+```{r, fig.height=6, fig.width=10}
 degree_long %>% 
   filter(`Field of study` %in% degree_long_top10) %>% 
   mutate(highlight = ifelse(`Field of study` %in% c("Business", "Health professions and related programs", "Engineering", "Biological and biomedical sciences", "Computer and information sciences and support services", "Psychology"), "highlight", "normal"),
@@ -834,9 +834,41 @@ degree_long %>%
   guides(alpha = "none")
 ```
 
-Top decling degree?
+```{r}
+ind_posting <- read_csv("Indeed_Postings.csv")
+```
+
+```{r}
+ind_posting <- ind_posting %>% 
+  rename(Value = IHLIDXUS)
+```
 
 
+```{r}
+ggplot(ind_posting, aes(x = observation_date, y = Value)) + 
+  geom_line(linewidth = 1, color = "#5C90B2") +
+  ylim(-5, NA) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y-%b") +
+  theme_classic() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.line.y.left = element_blank(),
+        panel.grid.major.y = element_line(),
+        axis.line.x.bottom = element_blank(),
+        axis.ticks.x.bottom = element_blank(),
+        axis.text.x = element_blank(),
+        plot.title = element_text(size = 20),
+        plot.caption = element_text(color = adjustcolor("black", alpha.f = 0.5))) +
+  geom_hline(yintercept = 0, color = "black") +
+  annotate("rect", xmin = as.Date(min(ind_posting$observation_date), format = "%Y-%m-%d"), xmax = as.Date("2023-05-11", format = "%Y-%m-%d"), ymin = 0, ymax = max(ind_posting$Value) + 5, fill = "red", alpha = 0.08) +
+  annotate("text", x = as.Date(min(ind_posting$observation_date), format = "%Y-%m-%d"), y = -5, label = "2020-03-28", size = 3.2, hjust = 0.4) +
+  annotate("text", x = as.Date("2022-04-01", format = "%Y-%m-%d"),y = -5, label = "2022-04-01", size = 3.2) +
+  annotate("segment", x = as.Date("2022-04-01", format = "%Y-%m-%d"), xend = as.Date("2022-04-01", format = "%Y-%m-%d"), y = 0, yend = max(ind_posting$Value), color = "black", linetype = "dashed") + 
+  annotate("text", x = as.Date("2023-05-11", format = "%Y-%m-%d"), y = -5, label = "2023-05-11", size = 3.2) + 
+  annotate("text", x = as.Date("2024-01-01", format = "%Y-%m-%d"), y = -5, label = "2024-01-01", size = 3.2) + 
+  annotate("text", x = as.Date("2025-01-01", format = "%Y-%m-%d"), y = -5, label = "2025-01-01", size = 3.2) +
+  labs(title = "Job Postings On Indeed in the United States", caption = "Units: Index, Feb, 1, 2020 = 100, Seasonally Adjusted, Frequency: Daily, 7-Day")
+```
 
 
 
