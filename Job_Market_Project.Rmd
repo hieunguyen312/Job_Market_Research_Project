@@ -3,6 +3,7 @@ title: "Is The Job Market 'Cooked' ?"
 author: "Hieu Nguyen"
 date: "2025-03-20"
 output: html_document
+#runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
@@ -804,7 +805,11 @@ degree_long %>%
   theme(#legend.position = "none", 
         axis.title.y.left = element_blank(),
         plot.title = element_text(hjust = 0.5, size = 20)) +
-  guides(alpha = "none")
+  guides(alpha = "none") +
+  scale_y_continuous(breaks = seq(0, 400000, 100000),
+                     labels = c("0", "100k", "200k", "300k", "400k")) +
+  theme(panel.grid.major.y = element_line(),
+        axis.line.y.left = element_blank())
 ```
 
 
@@ -870,10 +875,736 @@ ggplot(ind_posting, aes(x = observation_date, y = Value)) +
   labs(title = "Job Postings On Indeed in the United States", caption = "Units: Index, Feb, 1, 2020 = 100, Seasonally Adjusted, Frequency: Daily, 7-Day")
 ```
 
+```{r}
+devtools::install_github("UrbanInstitute/urbnmapr")
+library(urbnmapr)
+```
+
+```{r}
+states_sf <- get_urbn_map(map = "states", sf = TRUE)
+counties_sf <- get_urbn_map(map = "counties", sf = TRUE)
+```
+
+```{r, eval = FALSE}
+ggplot(states_sf) +
+  geom_sf() +
+  coord_sf(crs=st_crs(4326)) +
+  theme_map()
+```
+
+```{r}
+posting_clean_fips_agrr <- posting_clean %>% 
+  filter(!is.na(fips)) %>% 
+  count(fips) 
+```
+
+```{r}
+posting_fips_join <- left_join(counties_sf, posting_clean_fips_agrr, by = c("county_fips" = "fips"))
+```
+
+```{r}
+library(sf)
+ggplot(posting_fips_join, aes(fill = n)) +
+  geom_sf() +
+  coord_sf(crs=st_crs(4326)) +
+  theme_map()
+```
+
+```{r}
+posting_large <- read_csv("linkedin_job_postings.csv")
+```
+
+```{r}
+uscities <- read_csv("uscities.csv")
+```
+
+
+```{r}
+posting_large_us <- posting_large %>% 
+  filter(search_country == "United States")
+nrow(posting_large_us)
+```
+
+```{r}
+uscities_clean <- uscities %>% 
+  select(city, state_id, county_fips) %>% 
+  mutate(location = paste(city, state_id, sep = ", ")) %>% 
+  select(-city, - state_id)
+```
+
+```{r}
+posting_large_us_join <- posting_large_us %>% 
+  left_join(uscities_clean, by = c("job_location" = "location"))
+nrow(posting_large_us_join)
+```
+
+```{r}
+posting_large_aggr <- posting_large_us_join %>% 
+  filter(!is.na(county_fips)) %>% 
+  count(county_fips)
+```
+
+
+```{r}
+posting_large_fips_join <- left_join(counties_sf, posting_large_aggr, by = "county_fips" )
+```
+
+```{r, fig.dpi=1200}
+ggplot() +
+  geom_sf(data = posting_large_fips_join, aes(fill = log(n)), linewidth = 0.1) +
+  coord_sf(crs=st_crs(4326)) +
+  theme_map() +
+  theme(legend.position = c(0.2,-0.15),
+        legend.title = element_blank(),
+        plot.margin = margin(1,1,50,1)) +
+  scale_fill_gradientn(
+    colors = c("lightblue","#FFFF99", "orange", "darkred"),  
+    na.value = "lightblue",
+    guide = guide_colorbar(barheight = 0.8, barwidth = 20, direction = "horizontal"),
+    limits = c(min(log(posting_large_fips_join$n), na.rm = TRUE), 
+               max(log(posting_large_fips_join$n), na.rm = TRUE)),
+    labels = c("0",expression(10^2.5),expression(10^5),expression(10^7.5),expression(10^10))
+  ) +
+  geom_sf(data = states_sf, color = "black", fill = NA, linewidth = 0.25) 
+```
+
+```{r}
+posting_large_fips_join_logn <- posting_large_fips_join %>% 
+  mutate(logn = log(n))
+```
+
+
+```{r, eval=FALSE}
+ggplot(posting_large_fips_join_logn, aes(fill = logn)) +
+  geom_sf() +
+  coord_sf(crs = st_crs(4326)) +
+  theme_map() +
+  theme(legend.position = "right") +
+  scale_fill_gradient2(
+    low = "lightblue",
+    mid = "royalblue",
+    high = "darkblue", 
+    midpoint = mean(posting_large_fips_join_logn$logn),
+    na.value = "lightblue"
+  )
+
+
+#guide = guide_colorbar(barheight = 10, barwidth = 1)
+```  
+
+
+# Dumbbell graph
+
+```{r}
+library(ggalt)
+```
+
+```{r}
+salary_aggr_by_lv <- posting_clean_long %>% 
+  filter(!is.na(norm_min_salary) & !is.na(norm_med_salary) & !is.na(norm_max_salary)) %>% 
+  filter(!is.na(industries_name) & !is.na(formatted_experience_level)) %>% 
+  group_by(industries_name, formatted_experience_level) %>% 
+  summarise(med_min = median(norm_min_salary),
+            med_med = median(norm_med_salary),
+            med_max = median(norm_max_salary))
+
+salary_aggr_by_industry <- posting_clean_long %>% 
+  group_by(industries_name) %>% 
+  filter(!is.na(norm_min_salary) & !is.na(norm_med_salary) & !is.na(norm_max_salary)) %>% 
+  filter(!is.na(industries_name)) %>% 
+  summarise(med_min = median(norm_min_salary),
+            med_med = median(norm_med_salary),
+            med_max = median(norm_max_salary))
+```
+
+Because we want a somewhat accurate baseline, we will remove all industries with less than 20 mentioned, so that the amount median pay is somewhat reflective of the real mean
+
+```{r}
+unique_industry <- posting_clean_long %>% 
+  count(industries_name) %>% 
+  arrange(n) %>% 
+  filter(n <= 20) %>% 
+  pull(industries_name)
+```
+
+```{r}
+top10_pay_industry <- salary_aggr_by_industry %>% 
+  filter(!industries_name %in% unique_industry) %>% 
+  slice_max(med_med, n = 10) %>% 
+  pull(industries_name)
+```
+
+# Top 10 best paying industries
+
+```{r}
+salary_aggr_by_industry %>% 
+  filter(industries_name %in% top10_pay_industry) %>% 
+  ggplot() +
+  geom_dumbbell(aes(x = med_min, xend = med_max, y = reorder(industries_name, med_med))) +
+  geom_point(aes(x = med_med,y = reorder(industries_name, med_med))) 
+```
+
+# Test with lowest
+
+```{r, fig.height=10}
+top20_pay_industry <- salary_aggr_by_industry %>% 
+  filter(!industries_name %in% unique_industry) %>% 
+  slice_max(med_med, n = 20) %>% 
+  pull(industries_name)
+
+salary_aggr_by_industry %>% 
+  filter(industries_name %in% top20_pay_industry) %>% 
+  ggplot() +
+  geom_dumbbell(aes(x = med_min, xend = med_max, y = reorder(industries_name, med_med))) +
+  geom_point(aes(x = med_med,y = reorder(industries_name, med_med))) 
+```
+
+```{r, fig.height=10, warning=FALSE}
+salary_aggr_by_industry %>% 
+  filter(industries_name %in% top20_pay_industry) %>% 
+  filter(!industries_name %in% c("Movies", "and Sound")) %>% 
+  ggplot() +
+  geom_segment(aes(x = med_min, y = reorder(industries_name, med_med), xend = med_max, yend = reorder(industries_name, med_med)),
+               color = "grey",
+               alpha = 0.8,
+               linewidth = 4.5) +
+  geom_point(aes(x = med_min, y = reorder(industries_name, med_med)), color = "red", size = 4.5) +
+  geom_point(aes(x = med_max, y = reorder(industries_name, med_med)), color = "blue", size = 4.5) +
+  theme_classic() +
+  theme(panel.grid.major.x = element_line(),
+        axis.line.y.left = element_blank(),
+        axis.ticks.y.left = element_blank(),
+        axis.ticks.x.bottom = element_blank(),
+        axis.line.x.bottom = element_blank(),
+        axis.text.y.left = element_text(size = 12)) +
+  scale_x_continuous(limit = c(100000, 300000),
+                     breaks = seq(100000, 300000, 50000)) +
+  scale_y_discrete(labels = c("Videos" = "Videos, Movies, and Sounds"))
+```
+
+
+
+It is not worth looking over the levels, because they are not accurately labeled, and do not reflect the truth
+
+
+```{r}
+bottom10_pay_industry <- salary_aggr_by_industry %>% 
+  filter(!industries_name %in% unique_industry) %>%
+  slice_min(med_med, n = 10) %>% 
+  pull(industries_name)
+```
+
+```{r}
+salary_aggr_by_industry %>% 
+  filter(industries_name %in% bottom10_pay_industry) %>% 
+  ggplot() +
+  geom_dumbbell(aes(x = med_min, xend = med_max, y = reorder(industries_name, med_med))) +
+  geom_point(aes(x = med_med,y = reorder(industries_name, med_med))) 
+```
 
 
 
 
+```{r}
+bottom20_pay_industry <- salary_aggr_by_industry %>% 
+  filter(!industries_name %in% unique_industry) %>%
+  slice_min(med_med, n = 20) %>% 
+  pull(industries_name)
+
+salary_aggr_by_industry %>% 
+  filter(industries_name %in% bottom20_pay_industry) %>% 
+  ggplot() +
+  geom_dumbbell(aes(x = med_min, xend = med_max, y = reorder(industries_name, med_med))) +
+  geom_point(aes(x = med_med,y = reorder(industries_name, med_med))) 
+```
 
 
+```{r}
+testing123 <- posting %>% 
+  filter(pay_period == "HOURLY")
+```
+
+# Re-clean posting on pay period
+
+```{r}
+testing321 <- posting_clean_long %>% 
+  filter(industries_name == "Hospitals and Health Care")
+```
+
+
+```{r}
+grad_unemp <- read_csv("CGBD2534.csv")
+```
+
+```{r}
+grad_unemp <- grad_unemp %>% 
+  rename(date = observation_date,
+         value = CGBD2534)
+```
+
+```{r}
+library(shiny)
+library(plotly)
+```
+
+```{r}
+highlight1 <- data.frame(
+  xmin = as.Date("2001-03-01"),
+  xmax = as.Date("2001-10-01"),
+  ymin = 0,
+  ymax = 11
+)
+
+highlight2 <- data.frame(
+  xmin = as.Date("2008-01-01"),
+  xmax = as.Date("2009-05-01"),
+  ymin = 0,
+  ymax = 11
+)
+
+highlight3 <- data.frame(
+  xmin = as.Date("2020-02-01"),
+  xmax = as.Date("2020-05-01"),
+  ymin = 0,
+  ymax = 11
+)
+
+ui <- fluidPage(
+  titlePanel("College Graduate Unemployment Percentage"),
+  fluidRow(
+    column(11,
+           sliderInput("start_year",
+                       "Select Start Year:",
+                       min = as.numeric(format(min(grad_unemp$date), "%Y")),
+                       max = as.numeric(format(Sys.Date(), "%Y")),
+                       value = as.numeric(format(min(grad_unemp$date), "%Y")),
+                       sep = "",
+                       width = '100%')
+    )
+  ),
+  fluidRow(
+    column(11,
+           plotlyOutput("linePlot")
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$linePlot <- renderPlotly({
+    start_date <- as.Date(paste0(input$start_year, "-01-01"))
+    filtered_data <- grad_unemp %>%
+      filter(date >= start_date)
+
+    highlight1_filtered <- highlight1 %>%
+      filter(xmax >= start_date)
+
+    highlight2_filtered <- highlight2 %>%
+      filter(xmax >= start_date)
+
+    highlight3_filtered <- highlight3 %>%
+      filter(xmax >= start_date)
+
+    p <- ggplot() +
+      geom_line(data = filtered_data, aes(x = date, y = value), color = "#5C90B2") +
+      labs(title = paste("Data from", input$start_year, "to Present"),
+           x = "Date",
+           y = "Unemployment Rate %") +
+      theme_bw() +
+      theme(axis.line.y.left = element_blank(),
+            axis.ticks = element_blank(),
+            panel.grid.major.x = element_blank()) +
+      scale_y_continuous(limits = c(0, NA), breaks = seq(0, 10, 1))
+
+    if (nrow(highlight1_filtered) > 0) {
+      p <- p + geom_rect(data = highlight1_filtered,
+                          aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                          fill = "grey", alpha = 0.5, inherit.aes = FALSE)
+    }
+
+    if (nrow(highlight2_filtered) > 0) {
+      p <- p + geom_rect(data = highlight2_filtered,
+                          aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                          fill = "grey", alpha = 0.5, inherit.aes = FALSE)
+    }
+
+    if (nrow(highlight3_filtered) > 0) {
+      p <- p + geom_rect(data = highlight3_filtered,
+                          aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                          fill = "grey", alpha = 0.5, inherit.aes = FALSE)
+    }
+
+    ggplotly(p)  
+  })
+}
+
+shinyApp(ui = ui, server = server)
+```
+
+
+
+
+```{r}
+grad_unemp %>% 
+  filter(date >= as.Date("2019-01-01")) %>% 
+  ggplot() +
+  geom_line(aes(x = date, y = value))
+```
+
+```{r}
+grad_unemp %>% 
+  filter(date >= as.Date("2022-01-01")) %>% 
+  ggplot() +
+  geom_line(aes(x = date, y = value))
+```
+
+```{r}
+salary_aggr_by_industry_count <- posting_clean_long %>% 
+  group_by(industries_name) %>% 
+  filter(!is.na(norm_min_salary) & !is.na(norm_med_salary) & !is.na(norm_max_salary)) %>% 
+  filter(!is.na(industries_name)) %>% 
+  summarise(med_min = median(norm_min_salary),
+            med_med = median(norm_med_salary),
+            med_max = median(norm_max_salary),
+            count = n())
+```
+
+```{r}
+salary_aggr_by_industry_count %>% 
+  filter(med_med > 10000 & count >= 10) %>% 
+  ggplot() +
+  geom_point(aes(x = med_med, y = count, color = industries_name), stat = "identity") +
+  theme(legend.position = "none") +
+  scale_x_log10() +
+  scale_y_log10()
+```
+
+```{r}
+salary_aggr_by_industry_count %>% 
+  filter(med_med > 10000 & count >= 10) %>% 
+  ggplot() +
+  geom_point(aes(x = count, y = med_med, color = industries_name), stat = "identity") +
+  theme(legend.position = "none") +
+  scale_x_log10() +
+  scale_y_log10()
+```
+
+
+```{r}
+salary_aggr_by_industry_count %>%
+  filter(med_med > 10000 & count >= 10) %>%
+  plot_ly(
+    x = ~med_med,
+    y = ~count,
+    type = "scatter",
+    mode = "markers",
+    text = ~industries_name,
+    marker = list(size = 10, opacity = 0.7, color = 'steelblue')
+  ) %>%
+  layout(
+    xaxis = list(
+      type = "log",
+      title = "Median Salary",
+      tickvals = c(10000, 30000, 100000, 300000, 1000000),
+      ticktext = c("10K", "30K", "100K", "300K", "1M")
+    ),
+    yaxis = list(
+      type = "log",
+      title = "Count",
+      tickvals = c(10, 30, 100, 300, 1000, 3000),
+      ticktext = c("10", "30", "100", "300", "1K", "3K")
+    ),
+    showlegend = FALSE
+  )
+
+```
+
+# Best Graph
+
+```{r}
+salary_aggr_by_industry_count %>%
+  filter(med_med > 10000 & count >= 10) %>%
+  plot_ly(
+    x = ~count,
+    y = ~med_med,
+    type = "scatter",
+    mode = "markers",
+    text = ~industries_name,
+    marker = list(size = 10, opacity = 0.7, color = 'steelblue')
+  ) %>%
+  layout(
+    xaxis = list(
+      type = "log",
+      title = "Count",
+      tickvals = c(10, 30, 100, 300, 1000, 3000),
+      ticktext = c("10", "30", "100", "300", "1K", "3K")
+    ),
+    yaxis = list(
+      type = "log",
+      title = "Median Salary",
+      tickvals = c(50000, 70000, 100000, 150000, 200000),
+      ticktext = c("50K", "70K", "100K", "150k", "200k")
+    ),
+    showlegend = FALSE
+  )
+```
+
+```{r}
+
+salary_aggr_by_industry_count %>%
+  filter(med_med > 10000 & count >= 10) %>%
+  plot_ly(
+    x = ~count,
+    y = ~med_med,
+    type = "scatter",
+    mode = "markers",
+    text = ~industries_name,
+    marker = list(size = 10, opacity = 0.7, color = 'steelblue')
+  ) %>%
+  layout(
+    xaxis = list(
+      title = "Count"
+    ),
+    yaxis = list(
+      title = "Median Salary"
+    ),
+    showlegend = FALSE
+  )
+
+```
+
+# Best graph for visualizing salary and demand
+
+```{r}
+library(shiny)
+library(plotly)
+library(dplyr)
+
+
+filtered_industry_posting <- salary_aggr_by_industry_count %>%
+  filter(med_med > 10000 & count >= 10)
+
+ui <- fluidPage(
+  titlePanel("Industry Salary vs Count (Log Scale)"),
+  fluidRow(
+    column(12, 
+           textInput("industry_search", "Search for an Industry:", "")
+    )
+  ),
+  fluidRow(
+    column(12,
+           plotlyOutput("plot")
+    )
+  )
+)
+
+server <- function(input, output) {
+
+  output$plot <- renderPlotly({
+
+    plot_data <- filtered_industry_posting %>%
+      mutate(
+        is_highlighted = grepl(input$industry_search, industries_name, ignore.case = TRUE),
+        point_color = ifelse(is_highlighted, "red", "steelblue"),
+        point_size = ifelse(is_highlighted, 10, 7), 
+        point_opacity = ifelse(is_highlighted, 1, 0.6)
+      )
+
+    plot_ly(
+      data = plot_data,
+      x = ~count,
+      y = ~med_med,
+      type = "scatter",
+      mode = "markers",
+      text = ~industries_name,
+      marker = list(
+        color = ~point_color,
+        size = ~point_size,
+        opacity = ~point_opacity,
+        line = list(width = 1, color = "white")
+      )
+    ) %>%
+      layout(
+        xaxis = list(
+          type = "log",
+          title = "Count",
+          tickvals = c(10, 30, 100, 300, 1000, 3000),
+          ticktext = c("10", "30", "100", "300", "1K", "3K")
+        ),
+        yaxis = list(
+          type = "log",
+          title = "Median Salary",
+          tickvals = c(50000, 70000, 100000, 150000, 200000),
+          ticktext = c("50K", "70K", "100K", "150K", "200K")
+        ),
+        showlegend = FALSE
+      )
+  })
+}
+
+shinyApp(ui = ui, server = server)
+```
+
+# Or this, reversed axis
+
+```{r}
+library(shiny)
+library(plotly)
+library(dplyr)
+
+filtered_industry_posting <- salary_aggr_by_industry_count %>%
+  filter(med_med > 10000 & count >= 10)
+
+ui <- fluidPage(
+  titlePanel("Expected Salary and Demand"),
+  fluidRow(
+    column(12, 
+           textInput("industry_search", "Search for an Industry:", "")
+    )
+  ),
+  fluidRow(
+    column(12,
+           plotlyOutput("plot")
+    )
+  )
+)
+
+server <- function(input, output) {
+
+  output$plot <- renderPlotly({
+
+    plot_data <- filtered_industry_posting %>%
+      mutate(
+        is_highlighted = grepl(input$industry_search, industries_name, ignore.case = TRUE),
+        point_color = ifelse(is_highlighted, "red", "steelblue"),
+        point_size = ifelse(is_highlighted, 10, 7), 
+        point_opacity = ifelse(is_highlighted, 1, 0.6)
+      )
+
+    plot_ly(
+      data = plot_data,
+      x = ~med_med,  
+      y = ~count,    
+      type = "scatter",
+      mode = "markers",
+      text = ~industries_name,
+      marker = list(
+        color = ~point_color,
+        size = ~point_size,
+        opacity = ~point_opacity,
+        line = list(width = 1, color = "white")
+      )
+    ) %>%
+      layout(
+        xaxis = list(
+          type = "log",
+          title = "Median Salary",
+          tickvals = c(50000, 70000, 100000, 150000, 200000),
+          ticktext = c("50K", "70K", "100K", "150K", "200K")
+        ),
+        yaxis = list(
+          type = "log",
+          title = "Count",
+          tickvals = c(10, 30, 100, 300, 1000, 3000),
+          ticktext = c("10", "30", "100", "300", "1K", "3K")
+        ),
+        showlegend = FALSE
+      )
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+```
+
+
+```{r}
+us_unemp <- read_csv("UNRATE.csv")
+```
+
+```{r}
+us_unemp <- us_unemp %>% 
+  rename(date = observation_date,
+         value = UNRATE) %>% 
+  mutate(value = as.numeric(value))
+```
+
+
+```{r}
+ggplot(us_unemp) +
+  geom_line(aes(x = date, y = value)) +
+  ylim(0,NA)
+```
+
+```{r}
+library(shiny)
+library(ggplot2)
+library(plotly)
+library(dplyr)
+
+
+ui <- fluidPage(
+  titlePanel("U.S. Unemployment Rates Over Time"),
+  fluidRow(
+    column(12,
+           sliderInput("start_year",
+                       "Select Start Year:",
+                       min = as.numeric(format(min(grad_unemp$date), "%Y")),
+                       max = as.numeric(format(Sys.Date(), "%Y")),
+                       value = as.numeric(format(min(grad_unemp$date), "%Y")),
+                       sep = "",
+                       width = '100%'))),
+  fluidRow(
+    column(6,
+           h4("College Graduates"),
+           plotlyOutput("linePlot")),
+    column(6,
+           h4("US General Population"),
+           plotlyOutput("linePlot2"))))
+
+
+server <- function(input, output) {
+  
+  output$linePlot <- renderPlotly({
+    start_date <- as.Date(paste0(input$start_year, "-01-01"))
+    
+    grad_filtered <- grad_unemp %>% filter(date >= start_date)
+    us_filtered   <- us_unemp   %>% filter(date >= start_date)
+
+    max_y <- max(c(grad_filtered$value, us_filtered$value), na.rm = TRUE)
+    
+    p <- ggplot(grad_filtered, aes(x = date, y = value)) +
+      geom_line(color = "#5C90B2") +
+      labs(title = paste("Data from", input$start_year, "to Present"),
+           x = "Date", y = "Unemployment Rate %") +
+      scale_y_continuous(limits = c(0, max_y)) +
+      theme_bw() +
+      theme(panel.grid.major.x = element_blank())
+
+    ggplotly(p)
+  })
+  
+  output$linePlot2 <- renderPlotly({
+    start_date <- as.Date(paste0(input$start_year, "-01-01"))
+
+    grad_filtered <- grad_unemp %>% filter(date >= start_date)
+    us_filtered   <- us_unemp   %>% filter(date >= start_date)
+
+    max_y <- max(c(grad_filtered$value, us_filtered$value), na.rm = TRUE)
+    
+    p <- ggplot(us_filtered, aes(x = date, y = value)) +
+      geom_line(color = "#5C90B2") +
+      labs(title = paste("Data from", input$start_year, "to Present"),
+           x = "Date", y = "Unemployment Rate %") +
+      scale_y_continuous(limits = c(0, max_y)) +
+      theme_bw() +
+      theme(panel.grid.major.x = element_blank())
+
+    ggplotly(p)
+  })
+}
+
+
+shinyApp(ui = ui, server = server)
+
+```
 
