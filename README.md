@@ -46,7 +46,8 @@ This project explores patterns and insights from job posting data across the Uni
 ## 📚 Datasets
 
 - [📂 LinkedIn Job Postings (Kaggle)](https://www.kaggle.com/datasets/arshkon/linkedin-job-postings/data)  
-- [📈 U.S. Job Openings Index (FRED)](https://fred.stlouisfed.org/series/IHLIDXUS)  
+- [📈 U.S. Job Openings Index (FRED)](https://fred.stlouisfed.org/series/IHLIDXUS)
+- [📂 1.3M LinkedIn Job Posting] (https://www.kaggle.com/datasets/asaniczka/1-3m-linkedin-jobs-and-skills-2024/data)
 - [💻 U.S. Tech Job Openings Index (FRED)](https://fred.stlouisfed.org/series/IHLIDXUSTPSOFTDEVE)  
 - 📎 Additional `.csv` and `.xlsx` files included in the repository
 
