@@ -2,9 +2,27 @@
 title: "Is The Job Market 'Cooked' ?"
 author: "Hieu Nguyen"
 date: "2025-03-20"
-output: html_document
-#runtime: shiny
+output: 
+  html_document:
+    theme: flatly
+runtime: shiny
+
 ---
+
+<style>
+  .shiny-input-container input, 
+  .shiny-input-container select,
+  .shiny-input-container textarea,
+  .form-control {
+    height: 50px;  /* Increase height */
+    font-size: 16px;  /* Increase font size */
+    padding: 10px;  /* Add padding for more space */
+  }
+  
+  .form-group {
+    margin-bottom: 20px;  /* Add space between widgets */
+  }
+</style>
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -1268,6 +1286,17 @@ salary_aggr_by_industry_count <- posting_clean_long %>%
             count = n())
 ```
 
+
+```{r}
+salary_aggr_by_industry_count <- salary_aggr_by_industry_count %>% 
+  group_by(med_min, med_med, med_max, count) %>% 
+  summarise(
+    industries_name = paste(sort(industries_name), collapse = ", "),
+    .groups = "drop"
+  )
+```
+
+
 ```{r}
 salary_aggr_by_industry_count %>% 
   filter(med_med > 10000 & count >= 10) %>% 
@@ -1458,15 +1487,10 @@ ui <- fluidPage(
   titlePanel("Expected Salary and Demand"),
   fluidRow(
     column(12, 
-           textInput("industry_search", "Search for an Industry:", "")
-    )
-  ),
+           textInput("industry_search", "Search for an Industry:", ""))),
   fluidRow(
     column(12,
-           plotlyOutput("plot")
-    )
-  )
-)
+           plotlyOutput("plot", height = "300px", width = "100%"))))
 
 server <- function(input, output) {
 
@@ -1477,8 +1501,7 @@ server <- function(input, output) {
         is_highlighted = grepl(input$industry_search, industries_name, ignore.case = TRUE),
         point_color = ifelse(is_highlighted, "red", "steelblue"),
         point_size = ifelse(is_highlighted, 10, 7), 
-        point_opacity = ifelse(is_highlighted, 1, 0.6)
-      )
+        point_opacity = ifelse(is_highlighted, 1, 0.6))
 
     plot_ly(
       data = plot_data,
@@ -1491,9 +1514,7 @@ server <- function(input, output) {
         color = ~point_color,
         size = ~point_size,
         opacity = ~point_opacity,
-        line = list(width = 1, color = "white")
-      )
-    ) %>%
+        line = list(width = 1, color = "white"))) %>%
       layout(
         xaxis = list(
           type = "log",
@@ -1507,8 +1528,7 @@ server <- function(input, output) {
           tickvals = c(10, 30, 100, 300, 1000, 3000),
           ticktext = c("10", "30", "100", "300", "1K", "3K")
         ),
-        showlegend = FALSE
-      )
+        showlegend = FALSE)
   })
 }
 
@@ -1541,16 +1561,17 @@ library(ggplot2)
 library(plotly)
 library(dplyr)
 
-
 ui <- fluidPage(
   titlePanel("U.S. Unemployment Rates Over Time"),
   fluidRow(
     column(12,
-           sliderInput("start_year",
-                       "Select Start Year:",
+           sliderInput("year_range",
+                       "Select Year Range:",
                        min = as.numeric(format(min(grad_unemp$date), "%Y")),
                        max = as.numeric(format(Sys.Date(), "%Y")),
-                       value = as.numeric(format(min(grad_unemp$date), "%Y")),
+                       value = c(as.numeric(format(min(grad_unemp$date), "%Y")),
+                                 as.numeric(format(Sys.Date(), "%Y"))),
+                       step = 1,
                        sep = "",
                        width = '100%'))),
   fluidRow(
@@ -1561,20 +1582,20 @@ ui <- fluidPage(
            h4("US General Population"),
            plotlyOutput("linePlot2"))))
 
-
 server <- function(input, output) {
   
   output$linePlot <- renderPlotly({
-    start_date <- as.Date(paste0(input$start_year, "-01-01"))
+    start_date <- as.Date(paste0(input$year_range[1], "-01-01"))
+    end_date <- as.Date(paste0(input$year_range[2], "-12-31"))
     
-    grad_filtered <- grad_unemp %>% filter(date >= start_date)
-    us_filtered   <- us_unemp   %>% filter(date >= start_date)
+    grad_filtered <- grad_unemp %>% filter(date >= start_date & date <= end_date)
+    us_filtered   <- us_unemp   %>% filter(date >= start_date & date <= end_date)
 
     max_y <- max(c(grad_filtered$value, us_filtered$value), na.rm = TRUE)
     
     p <- ggplot(grad_filtered, aes(x = date, y = value)) +
       geom_line(color = "#5C90B2") +
-      labs(title = paste("Data from", input$start_year, "to Present"),
+      labs(title = paste("Data from", input$year_range[1], "to", input$year_range[2]),
            x = "Date", y = "Unemployment Rate %") +
       scale_y_continuous(limits = c(0, max_y)) +
       theme_bw() +
@@ -1584,16 +1605,17 @@ server <- function(input, output) {
   })
   
   output$linePlot2 <- renderPlotly({
-    start_date <- as.Date(paste0(input$start_year, "-01-01"))
+    start_date <- as.Date(paste0(input$year_range[1], "-01-01"))
+    end_date <- as.Date(paste0(input$year_range[2], "-12-31"))
 
-    grad_filtered <- grad_unemp %>% filter(date >= start_date)
-    us_filtered   <- us_unemp   %>% filter(date >= start_date)
+    grad_filtered <- grad_unemp %>% filter(date >= start_date & date <= end_date)
+    us_filtered   <- us_unemp   %>% filter(date >= start_date & date <= end_date)
 
     max_y <- max(c(grad_filtered$value, us_filtered$value), na.rm = TRUE)
     
     p <- ggplot(us_filtered, aes(x = date, y = value)) +
       geom_line(color = "#5C90B2") +
-      labs(title = paste("Data from", input$start_year, "to Present"),
+      labs(title = paste("Data from", input$year_range[1], "to", input$year_range[2]),
            x = "Date", y = "Unemployment Rate %") +
       scale_y_continuous(limits = c(0, max_y)) +
       theme_bw() +
@@ -1602,7 +1624,6 @@ server <- function(input, output) {
     ggplotly(p)
   })
 }
-
 
 shinyApp(ui = ui, server = server)
 
