@@ -1,0 +1,599 @@
+---
+title: "Job_Market_Research_2"
+author: "Hieu Nguyen"
+date: "2025-04-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Reading the Data Sets
+
+```{r}
+#devtools::install_github("UrbanInstitute/urbnmapr")
+library(readr)
+library(patchwork)
+library(tidyverse)
+library(urbnmapr)
+library(sf)
+library(ggthemes)
+library(scales)
+library(readxl)
+library(forecast)
+library(tseries)
+library(writexl)
+ind_posting <- read_csv("Indeed_Postings.csv")
+us_unemp <- read_csv("UNRATE.csv")
+counties_sf <- get_urbn_map(map = "counties", sf = TRUE)
+states_sf <- get_urbn_map(map = "states", sf = TRUE)
+labor_demand_size <- read_excel("LSE_2024_Anatomy_Labor_DemandPre-PostCOVID-Topa.xlsx", sheet = "Chart 1", skip = 5)
+labor_demand_job <- read_excel("LSE_2024_Anatomy_Labor_DemandPre-PostCOVID-Topa.xlsx", sheet = "Charts 2", skip = 5)
+labor_demand_size_job <- read_excel("LSE_2024_Anatomy_Labor_DemandPre-PostCOVID-Topa.xlsx", sheet = "Chart 3", skip = 5)
+unemp_county <- read_excel("cleaned_county_unemp_rate.xlsx")
+```
+
+```{r, eval = FALSE}
+AL <- read_excel("UnemploymentReport.xlsx", skip = 2)
+AK <- read_excel("UnemploymentReport (1).xlsx", skip = 2)
+AZ <- read_excel("UnemploymentReport (2).xlsx", skip = 2)
+AR <- read_excel("UnemploymentReport (3).xlsx", skip = 2)
+CA <- read_excel("UnemploymentReport (4).xlsx", skip = 2)
+CO <- read_excel("UnemploymentReport (5).xlsx", skip = 2)
+CT <- read_excel("UnemploymentReport (6).xlsx", skip = 2)
+DE <- read_excel("UnemploymentReport (7).xlsx", skip = 2)
+DC <- read_excel("UnemploymentReport (8).xlsx", skip = 2)
+FL <- read_excel("UnemploymentReport (10).xlsx", skip = 2)
+GA <- read_excel("UnemploymentReport (11).xlsx", skip = 2)
+HI <- read_excel("UnemploymentReport (12).xlsx", skip = 2)
+ID <- read_excel("UnemploymentReport (13).xlsx", skip = 2)
+IL <- read_excel("UnemploymentReport (14).xlsx", skip = 2)
+IN <- read_excel("UnemploymentReport (15).xlsx", skip = 2)
+IA <- read_excel("UnemploymentReport (16).xlsx", skip = 2)
+KS <- read_excel("UnemploymentReport (17).xlsx", skip = 2)
+KY <- read_excel("UnemploymentReport (18).xlsx", skip = 2)
+LA <- read_excel("UnemploymentReport (19).xlsx", skip = 2)
+ME <- read_excel("UnemploymentReport (20).xlsx", skip = 2)
+MD <- read_excel("UnemploymentReport (21).xlsx", skip = 2)
+MA <- read_excel("UnemploymentReport (22).xlsx", skip = 2)
+MI <- read_excel("UnemploymentReport (23).xlsx", skip = 2)
+MN <- read_excel("UnemploymentReport (24).xlsx", skip = 2)
+MS <- read_excel("UnemploymentReport (25).xlsx", skip = 2)
+MO <- read_excel("UnemploymentReport (26).xlsx", skip = 2)
+MT <- read_excel("UnemploymentReport (27).xlsx", skip = 2)
+NE <- read_excel("UnemploymentReport (28).xlsx", skip = 2)
+NV <- read_excel("UnemploymentReport (29).xlsx", skip = 2)
+NH <- read_excel("UnemploymentReport (30).xlsx", skip = 2)
+NJ <- read_excel("UnemploymentReport (31).xlsx", skip = 2)
+NM <- read_excel("UnemploymentReport (32).xlsx", skip = 2)
+NY <- read_excel("UnemploymentReport (33).xlsx", skip = 2)
+NC <- read_excel("UnemploymentReport (34).xlsx", skip = 2)
+ND <- read_excel("UnemploymentReport (35).xlsx", skip = 2)
+OH <- read_excel("UnemploymentReport (36).xlsx", skip = 2)
+OK <- read_excel("UnemploymentReport (37).xlsx", skip = 2)
+OR <- read_excel("UnemploymentReport (38).xlsx", skip = 2)
+PA <- read_excel("UnemploymentReport (39).xlsx", skip = 2)
+RI <- read_excel("UnemploymentReport (41).xlsx", skip = 2)
+SC <- read_excel("UnemploymentReport (42).xlsx", skip = 2)
+SD <- read_excel("UnemploymentReport (43).xlsx", skip = 2)
+TN <- read_excel("UnemploymentReport (44).xlsx", skip = 2)
+TX <- read_excel("UnemploymentReport (45).xlsx", skip = 2)
+UT <- read_excel("UnemploymentReport (46).xlsx", skip = 2)
+VT <- read_excel("UnemploymentReport (47).xlsx", skip = 2)
+VA <- read_excel("UnemploymentReport (48).xlsx", skip = 2)
+WA <- read_excel("UnemploymentReport (49).xlsx", skip = 2)
+WV <- read_excel("UnemploymentReport (50).xlsx", skip = 2)
+WI <- read_excel("UnemploymentReport (51).xlsx", skip = 2)
+WY <- read_excel("UnemploymentReport (52).xlsx", skip = 2)
+```
+
+```{r, eval = FALSE}
+state_names_1 <- c(
+  "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
+  "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO",
+  "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH",
+  "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT",
+  "VA", "WA", "WV", "WI", "WY"
+)
+
+
+for (state in state_names_1) {
+  assign(state, get(state)[, -1])
+}
+```
+
+```{r, eval=FALSE}
+state_names_2 <- c(
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL",
+  "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE",
+  "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD",
+  "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"
+)
+
+for (state in state_names_2) {
+  assign(state, get(state)[, -13])
+}
+```
+
+
+```{r, eval=FALSE}
+unemp_county <- rbind(AL, AK,  AZ, AR,   CA,  CO,  CT,  DE,  DC,  FL,  GA,  HI,  ID,  IL,  IN,  IA,  KS,  KY,  LA,  ME,  MD,  MA, MI, MN,  MS,  MO,  MT,  NE,  NV,  NH,  NJ,  NM,  NY,  NC,  ND,  OH,  OK,  OR,  PA,  RI,  SC,  SD,  TN,  TX, UT, VT,  VA,  WA,  WV,  WI, WY )
+```
+
+```{r}
+str(unemp_county)
+summary(unemp_county)
+```
+
+```{r}
+colnames(labor_demand_job)[1] <- "name"
+colnames(labor_demand_size)[1] <- "name"
+colnames(labor_demand_size_job)[1] <- "name"
+```
+
+
+# Data Cleaning and Transformation
+
+```{r}
+ind_posting <- ind_posting %>% 
+  rename(Value = IHLIDXUS)
+
+ind_posting$TransValue <- ind_posting$Value / 10
+```
+
+```{r}
+us_unemp <- us_unemp %>% 
+  rename(date = observation_date,
+         value = UNRATE) %>% 
+  mutate(value = as.numeric(value))
+```
+
+```{r}
+county_map_join <- left_join(counties_sf, unemp_county, by = c("county_fips" = "FIPS"))
+```
+```{r}
+combined_range <- range(c(unemp_county$`2019`, unemp_county$`2020`,unemp_county$`2021`), na.rm = TRUE)
+```
+
+```{r}
+labor_demand_size_long <- labor_demand_size %>% 
+  pivot_longer(
+    cols = -name,
+    names_to = "year",
+    values_to = "value"
+  )
+```
+
+
+```{r}
+labor_demand_job_long <- labor_demand_job %>% 
+  pivot_longer(
+    cols = -name,
+    names_to = "year",
+    values_to = "value"
+  )
+```
+
+
+```{r}
+labor_demand_size_job_long <- labor_demand_size_job %>% 
+  pivot_longer(
+    cols = -name,
+    names_to = "size",
+    values_to = "value"
+  )
+```
+
+# EDA
+
+```{r}
+min(us_unemp$date)
+
+us_unemp_bf_1998 <- us_unemp %>%
+  filter(date < as.Date("1990-01-01", format = "%Y-%m-%d"))
+
+tick_dates_1 <- seq.Date(
+  from = as.Date("1948-01-01"),
+  to = as.Date("1990-01-01"),
+  by = "3 year")
+
+tick_df_1 <- data.frame(
+  x = tick_dates_1,
+  xend = tick_dates_1,
+  y = 0,
+  yend = -0.1)
+```
+
+```{r}
+us_unemp_af_1990 <- us_unemp %>%
+  filter(date >= as.Date("1989-01-01", format = "%Y-%m-%d"))
+
+tick_dates_2 <- seq.Date(
+  from = as.Date("1990-01-01"),
+  to = as.Date("2025-01-01"),
+  by = "5 years")
+
+tick_df_2 <- data.frame(
+  x = tick_dates_2,
+  xend = tick_dates_2,
+  y = 0,
+  yend = -0.1)
+
+custom_years_1 <- data.frame(
+  year = seq(1990, 2025, by = 5),
+  date = as.Date(paste0(seq(1990, 2025, by = 5), "-01-01")),
+  label = as.character(seq(1990, 2025, by = 5))
+)
+```
+
+```{r}
+covid_unemp <- us_unemp %>%
+  filter(date >= as.Date("2020-01-01", format = "%Y-%m-%d"))
+
+tick_dates_3 <- seq.Date(
+  from = as.Date("2020-01-01"),
+  to = as.Date("2025-01-01"),
+  by = "1 year")
+
+tick_df_3 <- data.frame(
+  x = tick_dates_3,
+  xend = tick_dates_3,
+  y = 0,
+  yend = -0.1)
+```
+
+```{r}
+tick_dates_4 <- seq.Date(
+  from = as.Date("1950-01-01"),
+  to = as.Date("2025-01-01"),
+  by = "5 year")
+
+tick_df_4 <- data.frame(
+  x = tick_dates_4,
+  xend = tick_dates_4,
+  y = 0,
+  yend = -0.1)
+```
+
+```{r}
+points <- data.frame(x = as.Date(c("2020-01-20","2020-04-01", "2022-01-01", "2023-05-01")),
+                     y = c(3.5, 14.8, 4, 3.6))
+```
+
+# Date Visualization
+
+### Custom theme
+
+```{r}
+theme_hieu_line <- function() {
+  theme_classic() +
+    theme(
+      axis.title.x = element_blank(),
+      axis.line.y.left = element_blank(),
+      panel.grid.major.y = element_line(),
+      axis.line.x.bottom = element_blank(),
+      axis.ticks.x.bottom = element_blank(),
+      plot.title = element_text(size = 20))
+}
+```
+
+### Figures
+
+```{r}
+fig1 <- ggplot() + 
+  geom_line(aes(x = observation_date, y = Value), linewidth = 1, color = "#5C90B2", data = ind_posting) +
+  ylim(-5, NA) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y-%b") +
+  theme_hieu_line() +
+  theme(plot.caption = element_text(color = adjustcolor("black", alpha.f = 0.5)),
+        axis.text.x.bottom = element_blank()) +
+  geom_hline(yintercept = 0, color = "black") +
+  annotate("rect", xmin = as.Date(min(ind_posting$observation_date), format = "%Y-%m-%d"), xmax = as.Date("2023-05-11", format = "%Y-%m-%d"), ymin = 0, ymax = max(ind_posting$Value) + 5, fill = "red", alpha = 0.08) +
+  annotate("text", x = as.Date(min(ind_posting$observation_date), format = "%Y-%m-%d"), y = -5, label = "2020-03-28", size = 3.2, hjust = 0.4) +
+  annotate("text", x = as.Date("2022-04-01", format = "%Y-%m-%d"),y = -5, label = "2022-04-01", size = 3.2) +
+  annotate("segment", x = as.Date("2022-04-01", format = "%Y-%m-%d"), xend = as.Date("2022-04-01", format = "%Y-%m-%d"), y = 0, yend = max(ind_posting$Value), color = "black", linetype = "dashed") + 
+  annotate("text", x = as.Date("2023-05-11", format = "%Y-%m-%d"), y = -5, label = "2023-05-11", size = 3.2) + 
+  annotate("text", x = as.Date("2024-01-01", format = "%Y-%m-%d"), y = -5, label = "2024-01-01", size = 3.2) + 
+  annotate("text", x = as.Date("2025-01-01", format = "%Y-%m-%d"), y = -5, label = "2025-01-01", size = 3.2) +
+  labs(title = "Job Postings On Indeed in the United States", caption = "Units: Index, Feb, 1, 2020 = 100, Seasonally Adjusted, Frequency: Daily, 7-Day", y = "Index") +
+  theme(axis.title.y.left = element_text(angle = 90))
+
+fig1
+```
+
+```{r, warning =FALSE}
+us_unemp %>%
+  ggplot() +
+  geom_line(aes(x = date, y = value), color = "#5C90B2", linewidth = 0.7) +
+  ylim(-1, NA) +
+  theme_hieu_line() +
+  geom_hline(yintercept = 0, color = "black") +
+  scale_x_date(
+    date_breaks = "5 year",
+    date_labels = "%Y",
+    limits = as.Date(c("1949-01-01", "2025-01-01"))) +
+  geom_segment(data = tick_df_4, aes(x = x, xend = xend, y = y, yend = yend), color = "black") +
+  theme(axis.text.x.bottom = element_text(vjust = 18)) +
+  annotate("segment", x = as.Date("1995-01-01"), xend = as.Date("1995-01-01"), y = 1, yend = 14, linetype = "dashed", linewidth = 0.5, color = "red") +
+  annotate("rect", xmin = as.Date("2020-01-19", format = "%Y-%m-%d"), xmax = as.Date("2023-05-11", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "red", alpha = 0.08) +
+  annotate("rect", xmin = as.Date("1990-01-01", format = "%Y-%m-%d"), xmax = as.Date("1992-08-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.15) +
+  annotate("rect", xmin = as.Date("2000-06-01", format = "%Y-%m-%d"), xmax = as.Date("2003-08-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.15) +
+  annotate("rect", xmin = as.Date("2007-01-01", format = "%Y-%m-%d"), xmax = as.Date("2010-06-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.15) +
+  annotate("rect", xmin = as.Date("1953-01-01", format = "%Y-%m-%d"), xmax = as.Date("1954-10-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.15) +
+  annotate("rect", xmin = as.Date("1957-01-01", format = "%Y-%m-%d"), xmax = as.Date("1958-06-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.15) +
+  annotate("rect", xmin = as.Date("1960-04-01", format = "%Y-%m-%d"), xmax = as.Date("1961-08-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.15) +
+  annotate("rect", xmin = as.Date("2007-01-01", format = "%Y-%m-%d"), xmax = as.Date("2010-06-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.15) +
+  annotate("rect", xmin = as.Date("1970-01-01", format = "%Y-%m-%d"), xmax = as.Date("1971-06-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.15) +
+  annotate("rect", xmin = as.Date("1974-01-01", format = "%Y-%m-%d"), xmax = as.Date("1975-06-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.15) +
+  annotate("rect", xmin = as.Date("1979-06-01", format = "%Y-%m-%d"), xmax = as.Date("1983-06-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.15) +
+  annotate("text", x = as.Date("1995-01-01"),y = 14.5, label = "Birth of World Wide Web", color = "red") +
+  labs(y = "Percentage", title = "Recorded History Trend of Unemployment Rate")
+```
+
+```{r}
+# Before the internet boom of 1990 (dot com bubble)
+fig2 <- ggplot() +
+  geom_line(aes(x = date, y = value), color = "#5C90B2", linewidth = 0.8, data = us_unemp_bf_1998) +
+  ylim(-0.1,15) +
+  theme_hieu_line() +
+  theme(axis.text.x.bottom = element_text(vjust = 10)) +
+  geom_hline(yintercept = 0, color = "black") +
+  scale_x_date(date_breaks = "3 year", date_labels = "%Y") +
+  geom_segment(data = tick_df_1, aes(x = x, xend = xend, y = y, yend = yend), color = "black") +
+  labs(y = "Percentage")
+```
+
+```{r}
+# After 1995 dot com bubble
+fig3 <- ggplot() +
+  geom_line(aes(x = date, y = value), color = "#5C90B2", linewidth = 0.8, data = us_unemp_af_1990) +
+  ylim(-1,15.5) +
+  theme_hieu_line() +
+  geom_hline(yintercept = 0, color = "black") +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  geom_segment(data = tick_df_2, aes(x = x, xend = xend, y = y, yend = yend), color = "black") +
+  labs(y = "Percentage", title = "Since the Globalization of the World Wide Web")  +
+  theme(axis.text.x.bottom = element_text(vjust = 10)) +
+  annotate("rect", xmin = as.Date("2020-01-19", format = "%Y-%m-%d"), xmax = as.Date("2023-05-11", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "red", alpha = 0.08) +
+  theme(axis.text.x.bottom = element_blank()) +
+  geom_text(data = custom_years_1,aes(x = date, y = -1, label = label),
+            vjust = -1,
+            size = 3) +
+  annotate("rect", xmin = as.Date("1990-01-01", format = "%Y-%m-%d"), xmax = as.Date("1992-08-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.3) +
+  annotate("rect", xmin = as.Date("2000-06-01", format = "%Y-%m-%d"), xmax = as.Date("2003-08-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.3) +
+  annotate("rect", xmin = as.Date("2007-01-01", format = "%Y-%m-%d"), xmax = as.Date("2010-06-01", format = "%Y-%m-%d"), ymin = 0, ymax = 15, fill = "grey", alpha = 0.3) +
+  annotate("text", x = as.Date("1991-04-01"), y = 15.4, label = "1990 Recession", size = 3) +
+  annotate("text", x = as.Date("2002-03-01"), y = 15.4, label = "'.com' Bubble Burst", size = 3) +
+  annotate("text", x = as.Date("2008-06-01"), y = 15.4, label = "Great Recession", size = 3) +
+  annotate("text", x = as.Date("2021-10-01"), y = 15.4, label = "COVID 19", size = 3, color = "red", alpha = 0.8)
+  
+fig3
+```
+
+```{r}
+fig4 <- ggplot() +
+  geom_line(aes(x = date, y = value), color = "#5C90B2", linewidth = 0.8, data = covid_unemp) +
+  ylim(-0.1,16) +
+  theme_hieu_line() +
+  geom_hline(yintercept = 0, color = "black") +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  geom_segment(data = tick_df_3, aes(x = x, xend = xend, y = y, yend = yend), color = "black") +
+  theme(axis.text.x.bottom = element_text(vjust = 10)) + 
+  labs(y = "Percentage") +
+  annotate("text", x = as.Date("2020-08-20"), y = 3, label = "First Case in U.S.", size = 3.5, color = "red") +
+  geom_point(data = points, aes(x = x, y = y), color = "red", size = 2) +
+  annotate("text", x = as.Date("2021-05-01"), y = 15.2, label = "Peak Unemployment (14.8%)", size = 3.5, color = "red") +
+  annotate("text", x = as.Date("2022-07-01"), y = 4.8, label = "Peak COVID cases", size = 3.5, color = "red") +
+  annotate("text", x = as.Date("2024-02-01"), y = 2.7, label = "Pandemic Officially End", size = 3.5, color = "red")
+
+fig4
+```
+
+```{r}
+points
+```
+
+
+```{r, warning=FALSE}
+ggplot() +
+  geom_line(aes(x = observation_date, y = TransValue), 
+            data = ind_posting, color = "#5C90B2", linewidth = 1) +
+  geom_line(aes(x = date, y = value), 
+            data = covid_unemp, color = "#E15759", linewidth = 0.8) +
+  scale_y_continuous(
+  name = "Unemployment Rate (%)",
+  sec.axis = sec_axis(
+    trans = ~ ., 
+    name = "Job Demand Index (Indeed)",
+    labels = function(x) x * 10  )) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y", limits = as.Date(c("2019-10-01", "2025-01-01"))) +
+  theme_hieu_line() +
+  geom_hline(yintercept = 0, color = "black") +
+  theme(
+    axis.text.x.bottom = element_text(vjust = 10),
+    axis.title.y = element_text(color = "#E15759"),       
+    axis.title.y.right = element_text(color = "#5C90B2")) +
+  geom_segment(data = tick_df_3, aes(x = x, xend = xend, y = y, yend = yend), color = "black") +
+  annotate("segment", 
+           x = as.Date("2020-01-01"), 
+           xend = min(ind_posting$observation_date), 
+           y = 10, yend = 8.393, 
+           linetype = "dashed", linewidth = 1, color = "#5C90B2") +
+  theme(axis.line.y.right = element_blank()) +
+  annotate("segment", x = as.Date("2020-01-20"), xend = as.Date("2020-01-20"), y = 0, yend = 9.7, linetype = "dashed", linewidth = 0.7, color = "grey") +
+  annotate("segment", x = as.Date("2020-04-01"), xend = as.Date("2020-04-01"), y = 0, yend = 14.7, linetype = "dashed", linewidth = 0.7, color = "grey") +
+  annotate("segment", x = as.Date("2022-01-01"), xend = as.Date("2022-01-01"), y = 0, yend = 15.3, linetype = "dashed", linewidth = 0.7, color = "grey") +
+  annotate("segment", x = as.Date("2023-05-01"), xend = as.Date("2023-05-01"), y = 0, yend = 13.6, linetype = "dashed", linewidth = 0.7, color = "grey") +
+  annotate("text", x = as.Date("2019-10-01"), y = 3, label = "1st COVID", size = 3) +
+  annotate("text", x = as.Date("2019-10-01"), y = 2.5, label = "case in", size = 3) +
+  annotate("text", x = as.Date("2019-10-01"), y = 2, label = "the U.S.", size = 3) +
+  annotate("text", x = as.Date("2020-09-01"), y = 15.9, label = "Peak Unemployment", size = 3) +
+  annotate("text", x = as.Date("2020-09-01"), y = 15.3, label = "Rate (14.8%)", size = 3) +
+  annotate("text", x = as.Date("2022-06-01"), y = 14, label = "Peak COVID", size = 3) +
+  annotate("text", x = as.Date("2022-06-01"), y = 13.4, label = "(~62M Cases)", size = 3) +
+  annotate("text", x = as.Date("2023-09-20"), y = 11, label = "Biden Declare", size = 3) +
+  annotate("text", x = as.Date("2023-12-20"), y = 10.4, label = "Pandemic Officially Over", size = 3)
+
+points
+```
+
+```{r, fig.dpi=1200}
+fig5 <- ggplot() +
+  geom_sf(data = county_map_join, aes(fill = `2019`), linewidth = 0.1) +
+  coord_sf(crs=st_crs(4326)) +
+  theme_map() +
+  theme(legend.position = c(0.2,-0.15),
+        legend.title = element_blank(),
+        plot.margin = margin(1,1,50,1)) +
+  scale_fill_gradientn(
+    colors = c("lightblue","#FFFF99", "orange", "darkred"),  
+    na.value = "lightblue",
+    guide = guide_colorbar(barheight = 0.8, barwidth = 20, direction = "horizontal"),
+    limits = combined_range, 
+    values = scales::rescale(c(0, 0.3, 0.5, 1)),
+    breaks = c(5, 10, 15, 20),
+    labels = c("5%", "10%", "15%", "20%")) +
+  geom_sf(data = states_sf, color = "black", fill = NA, linewidth = 0.15) 
+fig5
+```
+
+```{r, fig.dpi=1200}
+fig6 <- ggplot() +
+  geom_sf(data = county_map_join, aes(fill = `2020`), linewidth = 0.1) +
+  coord_sf(crs=st_crs(4326)) +
+  theme_map() +
+  theme(legend.position = c(0.2,-0.15),
+        legend.title = element_blank(),
+        plot.margin = margin(1,1,50,1)) +
+  scale_fill_gradientn(
+    colors = c("lightblue","#FFFF99", "orange", "darkred"),  
+    na.value = "lightblue",
+    guide = guide_colorbar(barheight = 0.8, barwidth = 20, direction = "horizontal"),
+    limits = combined_range, 
+    values = scales::rescale(c(0, 0.3, 0.5, 1)),
+    breaks = c(5, 10, 15, 20),
+    labels = c("5%", "10%", "15%", "20%")) +
+  geom_sf(data = states_sf, color = "black", fill = NA, linewidth = 0.2) 
+fig6
+```
+
+
+```{r, fig.dpi=1200}
+fig7 <- ggplot() +
+  geom_sf(data = county_map_join, aes(fill = `2021`), linewidth = 0.1) +
+  coord_sf(crs=st_crs(4326)) +
+  theme_map() +
+  theme(legend.position = c(0.2,-0.15),
+        legend.title = element_blank(),
+        plot.margin = margin(1,1,50,1)) +
+  scale_fill_gradientn(
+    colors = c("lightblue","#FFFF99", "orange", "darkred"),  
+    na.value = "lightblue",
+    guide = guide_colorbar(barheight = 0.8, barwidth = 20, direction = "horizontal"),
+    limits = combined_range,
+    values = scales::rescale(c(0, 0.3, 0.5, 1)),
+    breaks = c(5, 10, 15, 20),
+    labels = c("5%", "10%", "15%", "20%")) +
+  geom_sf(data = states_sf, color = "black", fill = NA, linewidth = 0.2) 
+fig7
+```
+
+```{r}
+labor_demand_size
+```
+
+```{r}
+ggplot() +
+  geom_bar(aes(x = name, y = value, fill = year), position = "dodge", stat = "identity", data = labor_demand_size_long) +
+  theme_classic() +
+  scale_fill_viridis_d(option = "E",
+                       labels = c("2017_2019" = "Pre COVID", "2021_2022" = "COVID", "2023_2024" = "Post COVID")) +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(), 
+        plot.title = element_text(size = 20),
+        legend.title = element_blank(),
+        legend.position = "bottom",
+        axis.title.x.bottom = element_blank()) +
+  labs(y = "Percentage", title = "Job Listing Proportion By Location Type") 
+```
+
+```{r}
+ggplot() +
+  geom_bar(aes(x = name, y = value, fill = year), position = "dodge", stat = "identity", data = labor_demand_job_long) +
+  theme_classic() +
+  scale_fill_viridis_d(option = "E",
+                       labels = c("2017-2019" = "Pre COVID", "2021-2022" = "COVID", "2023-2024" = "Post COVID")) +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(), 
+        plot.title = element_text(size = 20),
+        legend.title = element_blank(),
+        legend.position = "bottom",
+        axis.title.x.bottom = element_blank()) +
+  labs(y = "Percentage", title = "Job Listing Proportion By Location Type") +
+  scale_x_discrete(labels = function(x) gsub(" ", "\n", x))
+  
+```
+
+
+```{r, eval = FALSE}
+ggplot() +
+  geom_bar(aes(x = name,y = value,fill = factor(year, levels = c("2023-2024", "2021-2022", "2017-2019"))),
+    position = "dodge",
+    stat = "identity",
+    data = labor_demand_job_long) +
+  theme_classic() +
+  scale_fill_viridis_d(
+    option = "E",
+    direction = -1,
+    labels = c(
+      "2017-2019" = "Pre COVID",
+      "2021-2022" = "COVID",
+      "2023-2024" = "Post COVID"),
+    guide = guide_legend(reverse = TRUE)) +
+  theme(
+    axis.line = element_blank(),
+    axis.ticks = element_blank(),
+    plot.title = element_text(size = 20),
+    legend.title = element_blank(),
+    legend.position = "right",
+    axis.title.x.bottom = element_blank(),
+    axis.title.y.left = element_blank()) +
+  coord_flip()
+```
+
+```{r}
+ggplot() +
+  geom_tile(aes(x = factor(name, levels = c("Computer and Mathematical Occupations", 
+                                            "Business and Financial Operations Occupations", 
+                                            "Office and Administrative Support Occupations", 
+                                            "Sales and Related Occupations", 
+                                            "Food Preparation and Serving Related Occupations", 
+                                            "Healthcare Practitioners and Technical Occupations")),
+                y = factor(size, levels = c(
+                  "Small Metros and Micropolitan Areas", 
+                  "Medium Metro", 
+                  "Large Fringe Metro", 
+                  "Large Central Metro")), fill = value), data = labor_demand_size_job_long) + 
+  scale_x_discrete(labels = function(x) gsub(" ", "\n", x)) +
+  scale_y_discrete(labels = function(x) gsub(" ", "\n", x)) +
+  scale_fill_viridis_c(option = "H")+
+  theme_minimal() +
+  theme(legend.title = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(size = 18)) +
+  guides(fill=guide_colorbar(ticks.colour = NA, barwidth = 1, barheight = 15)) +
+  labs(title = "Shift in Occupation Demand by Location Type")
+```
+
+# Export Data to Excel
+
+```{r}
+write_xlsx(unemp_county, "C:/Users/ngtru/OneDrive/Documents/College work/STA-404/cleaned_county_unemp_rate.xlsx")
+```
+
+
+
+
+
